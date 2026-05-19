@@ -3171,7 +3171,14 @@ const[salaryQuarter,setSalaryQuarter]=useState(1);const[ftivExpandedRow,setFtivE
 const[googleScriptUrl,setGoogleScriptUrl]=useState('https://script.google.com/macros/s/AKfycbyBWa7QMygMeVVqRxu6hT2UowW-A5nkse5BrF-d41lLDI64ZCxNeRokBLdGwLUG3VVbfw/exec');
 const[showGoogleModal,setShowGoogleModal]=useState(false);const[googleFiles,setGoogleFiles]=useState([]);const[googleLoading,setGoogleLoading]=useState(false);const[showGoogleUrlModal,setShowGoogleUrlModal]=useState(false);const[googleUrlInput,setGoogleUrlInput]=useState(googleScriptUrl);
 // Google Drive 저장 (비압축 - 안정성 우선)
-const handleGoogleSave=async()=>{if(!googleScriptUrl){setShowGoogleUrlModal(true);return;}const name=prompt('서버에 저장할 이름을 입력하세요:');if(!name)return;setGoogleLoading(true);try{const dc=v=>JSON.parse(JSON.stringify(v));const backupObj={year:selectedYear,tcpEmployees:dc(tcpEmployees),feEmployees:dc(feEmployees),ctGroups:dc(ctGroups),items:dc(items),workDays:dc(workDays),tcpNightCount:dc(tcpNightCount),downtimeSchedules:dc(downtimeSchedules),actualData:dc(actualData),savedSchedules:dc(savedSchedules),savedData:dc(savedData),costSavingItems:dc(costSavingItems||[]),savedCostSavings:dc(savedCostSavings||[]),payrollCalcState:(await (async()=>{try{if(window.PayrollStorage){const v=await window.PayrollStorage.get();if(v)return v;}const ls=localStorage.getItem('payroll_calc_state_v4');return ls?JSON.parse(ls):null;}catch(e){return null;}})()),employeeActualData:dc(employeeActualData),lockedMonths:dc(lockedMonths),yearlyData:dc(yearlyData),timestamp:new Date().toISOString()};const res=await fetch(googleScriptUrl,{method:'POST',body:JSON.stringify({action:'save',name:name,data:JSON.stringify(backupObj)}),headers:{'Content-Type':'text/plain'}});const result=await res.json();if(result.success){setModalMessage('☁️ 서버에 저장 완료!\n'+result.message);setShowMessageModal(true);}else{alert('저장 실패: '+result.error);}}catch(e){alert('서버 연결 실패: '+e.message+'\n\nURL을 확인하세요.');}finally{setGoogleLoading(false);}};
+const handleGoogleSave=async()=>{if(!googleScriptUrl){setShowGoogleUrlModal(true);return;}const name=prompt('서버에 저장할 이름을 입력하세요:');if(!name)return;setGoogleLoading(true);try{const dc=v=>JSON.parse(JSON.stringify(v));const backupObj={year:selectedYear,tcpEmployees:dc(tcpEmployees),feEmployees:dc(feEmployees),ctGroups:dc(ctGroups),items:dc(items),workDays:dc(workDays),tcpNightCount:dc(tcpNightCount),downtimeSchedules:dc(downtimeSchedules),actualData:dc(actualData),savedSchedules:dc(savedSchedules),savedData:dc(savedData),costSavingItems:dc(costSavingItems||[]),savedCostSavings:dc(savedCostSavings||[]),payrollCalcState:(await (async()=>{try{if(window.PayrollStorage){const v=await window.PayrollStorage.get();if(v)return v;}const ls=localStorage.getItem('payroll_calc_state_v4');return ls?JSON.parse(ls):null;}catch(e){return null;}})()),employeeActualData:dc(employeeActualData),lockedMonths:dc(lockedMonths),yearlyData:dc(yearlyData),timestamp:new Date().toISOString()};const payload=JSON.stringify({action:'save',name:name,data:JSON.stringify(backupObj)});
+console.log('📤 서버 저장 시도 - 데이터 크기:',(payload.length/1024/1024).toFixed(2),'MB');
+console.log('📤 URL:',googleScriptUrl);
+const res=await fetch(googleScriptUrl,{method:'POST',body:payload,headers:{'Content-Type':'text/plain'},redirect:'follow'});
+console.log('📥 응답 상태:',res.status,res.statusText);
+const resText=await res.text();
+console.log('📥 응답 본문 (첫 500자):',resText.substring(0,500));
+let result;try{result=JSON.parse(resText);}catch(parseErr){throw new Error('응답 파싱 실패: '+parseErr.message+' (응답: '+resText.substring(0,200)+')');}if(result.success){setModalMessage('☁️ 서버에 저장 완료!\n'+result.message);setShowMessageModal(true);}else{alert('저장 실패: '+result.error);}}catch(e){alert('서버 연결 실패: '+e.message+'\n\nURL을 확인하세요.');}finally{setGoogleLoading(false);}};
 // Google Drive 불러오기 (비압축 직접 복원)
 const handleGoogleLoad=async(fileId)=>{setGoogleLoading(true);try{const res=await fetch(googleScriptUrl+'?action=load&fileId='+fileId);const result=await res.json();if(result.success){const backup=JSON.parse(result.data);const yr=backup.year||selectedYear;setSelectedYear(yr);setLoadedScenarioName(backup.name||result.name||'');if(backup.tcpEmployees)setTcpEmployees(backup.tcpEmployees);if(backup.feEmployees)setFeEmployees(backup.feEmployees);if(backup.ctGroups)setCtGroups(backup.ctGroups);if(backup.items)setItems(backup.items);if(backup.workDays)setWorkDays(backup.workDays);setTcpNightCount(backup.tcpNightCount||Array(12).fill(0));setDowntimeSchedules(backup.downtimeSchedules||[]);setSavedData(backup.savedData||[]);setCostSavingItems(backup.costSavingItems||[]);setSavedCostSavings(backup.savedCostSavings||[]);try{if(backup.payrollCalcState){if(window.PayrollStorage){window.PayrollStorage.set(backup.payrollCalcState).then(()=>{setPayrollRemountKey(k=>k+1);console.log('[GoogleLoad] 당월급여계산 데이터 복원됨 (IDB)');}).catch(e=>console.error('IDB restore fail',e));}else{localStorage.setItem('payroll_calc_state_v4',JSON.stringify(backup.payrollCalcState));setPayrollRemountKey(k=>k+1);console.log('[GoogleLoad] 당월급여계산 데이터 복원됨 (localStorage fallback)');}}}catch(e){console.error('payrollCalcState restore failed',e);}if(backup.savedSchedules)setSavedSchedules(backup.savedSchedules);if(backup.employeeActualData)setEmployeeActualData(backup.employeeActualData);if(backup.lockedMonths)setLockedMonths(backup.lockedMonths);if(backup.actualData)setActualData(backup.actualData);if(backup.yearlyData){setYearlyData(backup.yearlyData);dbSet('mfg-yearly-data',backup.yearlyData);}setShowGoogleModal(false);setModalMessage('☁️ 서버에서 불러오기 완료!\n'+(result.name||''));setShowMessageModal(true);}else{alert('불러오기 실패: '+result.error);}}catch(e){alert('불러오기 실패: '+e.message);}finally{setGoogleLoading(false);}};
 // Google Drive 목록 조회
@@ -4010,10 +4017,17 @@ if(e.hireDate&&new Date(e.hireDate)>monthEnd)return false;
 if(e.resignDate&&new Date(e.resignDate)<monthStart)return false;
 return true;
 }).length;
-const wd=(workDays[m]||[]).filter(d=>d.status==='work').length;
+const wdArr=workDays[m]||[];
+const wd=wdArr.filter(d=>d.status==='work').length;
+const specialDaysCount=wdArr.filter(d=>d.status==='special').length;
 // 부족 인원수 환산
 const shortageHeadcount=wd>0?shortage/(wd*dailyH):0;
 const requiredHeadcount=currentCount+Math.max(0,shortageHeadcount);
+// 주52시간 한도 기준 정적 필요인원 (인원수와 무관)
+// 1인 1주 최대 = 52h, 주수 = max(평일/5, (평일+특근)/6)
+const weeks52=Math.max(wd>0?wd/5:0,(wd+specialDaysCount)>0?(wd+specialDaysCount)/6:0);
+const perPersonAvail52=52*weeks52;
+const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;
 // 52시간 분석
 const weeklyData=calculateWeeklyHours(line,m,selectedYear,workDays);
 const activeWeeklyEmps=weeklyData.employees.filter(emp=>emp.avgHours>0);
@@ -4031,7 +4045,7 @@ processItemDetails[p]=procItems.map(i=>({name:i.name,qty:i.monthlyQty?.[m]||0}))
 const totalQty=Object.values(processQtys).reduce((s,v)=>s+v,0);
 results.push({
 month:MONTHS[m],mIdx:m,
-currentCount,requiredHeadcount,shortageHeadcount,
+currentCount,requiredHeadcount,requiredHeadcount52,shortageHeadcount,
 totalRequired:Math.round(totalRequired),
 totalAssigned:Math.round(totalAssigned),
 shortage:Math.round(shortage),
@@ -4300,8 +4314,12 @@ results.map(r=>/*#__PURE__*/React.createElement("th",{key:"h"+r.mIdx,style:{padd
 /*#__PURE__*/React.createElement("tbody",null,
 // 필요인원
 /*#__PURE__*/React.createElement("tr",{style:{background:"#eff6ff"}},
-/*#__PURE__*/React.createElement("td",{style:{padding:"0.6rem 1rem",fontWeight:600,color:"#1e40af",background:"#dbeafe"}},"필요인원"),
-results.map(r=>/*#__PURE__*/React.createElement("td",{key:"req"+r.mIdx,style:{padding:"0.6rem",textAlign:"center",color:"#1e40af"}},r.requiredHeadcount.toFixed(1)))
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.6rem 1rem",fontWeight:600,color:"#1e40af",background:"#dbeafe"}},"📐 필요인원 (주52h 기준)"),
+results.map(r=>/*#__PURE__*/React.createElement("td",{key:"req"+r.mIdx,style:{padding:"0.6rem",textAlign:"center",color:"#1e40af",fontWeight:700}},r.requiredHeadcount52?r.requiredHeadcount52.toFixed(1):"-"))
+),
+/*#__PURE__*/React.createElement("tr",{style:{background:"#fef3c7"}},
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.6rem 1rem",fontWeight:500,color:"#92400e",background:"#fde68a",fontSize:"0.85rem"}},"🔄 자동배치 기반 (참고)"),
+results.map(r=>/*#__PURE__*/React.createElement("td",{key:"req52"+r.mIdx,style:{padding:"0.6rem",textAlign:"center",color:"#92400e",fontWeight:500,fontSize:"0.9rem"}},r.requiredHeadcount.toFixed(1)))
 ),
 // 현재인원
 /*#__PURE__*/React.createElement("tr",{style:{background:"#f0fdf4"}},
@@ -4633,11 +4651,16 @@ return true;
 // 저장본 workDays 사용 (WD 차이 반영)
 const savedWdArr=overrideBase.workDays[m]||[];
 const wd=savedWdArr.filter(d=>d.status==='work').length||(workDays[m]||[]).filter(d=>d.status==='work').length;
+const specialDaysCount=savedWdArr.filter(d=>d.status==='special').length||(workDays[m]||[]).filter(d=>d.status==='special').length;
 const shortageHeadcount=wd>0?shortage/(wd*dailyH):0;
 const requiredHeadcount=currentCount+Math.max(0,shortageHeadcount);
+// 주52시간 한도 기준 정적 필요인원
+const weeks52=Math.max(wd>0?wd/5:0,(wd+specialDaysCount)>0?(wd+specialDaysCount)/6:0);
+const perPersonAvail52=52*weeks52;
+const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;
 results.push({
 mIdx:m,month:MONTHS[m],
-currentCount,requiredHeadcount,shortageHeadcount,
+currentCount,requiredHeadcount,requiredHeadcount52,shortageHeadcount,
 shortage:Math.round(shortage),
 totalRequired:Math.round(totalRequired),
 totalAssigned:Math.round(totalAssigned),
@@ -4766,20 +4789,30 @@ curResults.map(r=>/*#__PURE__*/React.createElement("th",{key:"srh"+r.mIdx,style:
 /*#__PURE__*/React.createElement("tbody",null,
 // 저장본 필요인원
 /*#__PURE__*/React.createElement("tr",{style:{background:"#eff6ff"}},
-/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:600,color:"#1e40af",background:"#dbeafe"}},"저장본 필요인원"),
-savedResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srsv"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#1e40af"}},r.requiredHeadcount.toFixed(1)))
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:600,color:"#1e40af",background:"#dbeafe"}},"📐 저장본 필요인원 (52h 기준)"),
+savedResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srsv"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#1e40af",fontWeight:700}},r.requiredHeadcount52?r.requiredHeadcount52.toFixed(1):"-"))
+),
+// 저장본 자동배치 기반 (참고)
+/*#__PURE__*/React.createElement("tr",{style:{background:"#fef3c7"}},
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:500,color:"#92400e",background:"#fde68a",fontSize:"0.85rem"}},"🔄 저장본 자동배치 기반 (참고)"),
+savedResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srsv52"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#92400e",fontWeight:500,fontSize:"0.9rem"}},r.requiredHeadcount.toFixed(1)))
 ),
 // 현재 필요인원
 /*#__PURE__*/React.createElement("tr",{style:{background:"#fef2f2"}},
-/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:600,color:"#991b1b",background:"#fee2e2"}},"현재 필요인원"),
-curResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srcu"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#991b1b"}},r.requiredHeadcount.toFixed(1)))
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:600,color:"#991b1b",background:"#fee2e2"}},"📐 현재 필요인원 (52h 기준)"),
+curResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srcu"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#991b1b",fontWeight:700}},r.requiredHeadcount52?r.requiredHeadcount52.toFixed(1):"-"))
+),
+// 현재 자동배치 기반 (참고)
+/*#__PURE__*/React.createElement("tr",{style:{background:"#fed7aa"}},
+/*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:500,color:"#9a3412",background:"#fdba74",fontSize:"0.85rem"}},"🔄 현재 자동배치 기반 (참고)"),
+curResults.map(r=>/*#__PURE__*/React.createElement("td",{key:"srcu52"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",color:"#9a3412",fontWeight:500,fontSize:"0.9rem"}},r.requiredHeadcount.toFixed(1)))
 ),
 // 증감
 /*#__PURE__*/React.createElement("tr",{style:{background:"#fef3c7",borderTop:"2px solid #f59e0b"}},
 /*#__PURE__*/React.createElement("td",{style:{padding:"0.5rem 1rem",fontWeight:700,color:"#92400e",background:"#fde68a"}},"📊 필요인원 증감"),
 curResults.map((r,i)=>{
 const sr=savedResults[i];
-const d=sr?r.requiredHeadcount-sr.requiredHeadcount:0;
+const d=sr?((r.requiredHeadcount52||0)-(sr.requiredHeadcount52||0)):0;
 return /*#__PURE__*/React.createElement("td",{key:"srd"+r.mIdx,style:{padding:"0.5rem",textAlign:"center",fontWeight:900,color:d>0.05?"#dc2626":d<-0.05?"#059669":"#6b7280",background:d>0.05?"#fecaca":d<-0.05?"#bbf7d0":"transparent"}},(d>=0?"+":"")+d.toFixed(1));
 })
 ),
