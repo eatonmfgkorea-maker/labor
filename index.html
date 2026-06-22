@@ -4250,8 +4250,8 @@ const totalShortage=results.reduce((s,r)=>s+Math.max(0,r.shortage),0);
 const shortageMonthCount=validResults.length;
 const okMonthCount=12-shortageMonthCount;
 // 그래프 좌표 계산
-const maxCount=Math.max(...results.map(r=>Math.max(r.currentCount,r.requiredHeadcount)))+2;
-const minCount=Math.max(0,Math.min(...results.map(r=>Math.min(r.currentCount,r.requiredHeadcount)))-2);
+const maxCount=Math.max(...results.map(r=>Math.max(r.currentCount,r.requiredHeadcount52)))+2;
+const minCount=Math.max(0,Math.min(...results.map(r=>Math.min(r.currentCount,r.requiredHeadcount52)))-2);
 const range=Math.max(1,maxCount-minCount);
 const xStep=100;
 const yScale=240/range;
@@ -4282,8 +4282,8 @@ return /*#__PURE__*/React.createElement("g",{key:"grid"+i},
 );
 }).filter(Boolean),
 // 필요인원 곡선
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:results.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount)).join(" ")}),
-results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"req"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"reqL"+i,x:xAt(i),y:yAt(r.requiredHeadcount)-12,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:results.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
+results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"req"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"reqL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)-12,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
 // 현재인원 직선
 /*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:results.map((r,i)=>xAt(i)+","+yAt(r.currentCount)).join(" ")}),
 results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"cur"+i,cx:xAt(i),cy:yAt(r.currentCount),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"curL"+i,x:xAt(i),y:yAt(r.currentCount)+18,fontSize:12,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.currentCount)),
@@ -4738,18 +4738,18 @@ isValid&&(()=>{
 const curResults=cache.results.filter(r=>r&&r.mIdx>=annualStartMonth&&r.mIdx<=annualEndMonth);
 const savedResults=savedCache.results.filter(r=>r&&r.mIdx>=annualStartMonth&&r.mIdx<=annualEndMonth);
 // 연간 합계
-const curYearly=curResults.reduce((s,r)=>s+r.requiredHeadcount,0)/12;
-const savedYearly=savedResults.reduce((s,r)=>s+r.requiredHeadcount,0)/12;
+const curYearly=curResults.reduce((s,r)=>s+r.requiredHeadcount52,0)/12;
+const savedYearly=savedResults.reduce((s,r)=>s+r.requiredHeadcount52,0)/12;
 const yearlyDiff=curYearly-savedYearly;
 // 그래프 범위
 const maxCount=Math.max(
-...curResults.map(r=>r.requiredHeadcount),
-...savedResults.map(r=>r.requiredHeadcount),
+...curResults.map(r=>r.requiredHeadcount52),
+...savedResults.map(r=>r.requiredHeadcount52),
 ...curResults.map(r=>r.currentCount)
 )+2;
 const minCount=Math.max(0,Math.min(
-...curResults.map(r=>r.requiredHeadcount),
-...savedResults.map(r=>r.requiredHeadcount),
+...curResults.map(r=>r.requiredHeadcount52),
+...savedResults.map(r=>r.requiredHeadcount52),
 ...curResults.map(r=>r.currentCount)
 )-2);
 const range=Math.max(1,maxCount-minCount);
@@ -4791,11 +4791,11 @@ return /*#__PURE__*/React.createElement("g",{key:"srg"+i},
 );
 }).filter(Boolean),
 // 저장본 필요 (점선 파랑)
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:savedResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount)).join(" ")}),
-savedResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"srs"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),savedResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srsL"+i,x:xAt(i),y:yAt(r.requiredHeadcount)-10,fontSize:11,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.requiredHeadcount.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:savedResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
+savedResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"srs"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),savedResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srsL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)-10,fontSize:11,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
 // 현재 필요 (실선 빨강)
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:curResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount)).join(" ")}),
-curResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"src"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),curResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srcL"+i,x:xAt(i),y:yAt(r.requiredHeadcount)+18,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:curResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
+curResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"src"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),curResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srcL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)+18,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
 // 현재 인원 (녹색 점선)
 /*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#10b981",strokeWidth:2,strokeDasharray:"3,3",points:curResults.map((r,i)=>xAt(i)+","+yAt(r.currentCount)).join(" ")}),
 // X축
