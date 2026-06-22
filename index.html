@@ -4052,7 +4052,7 @@ const requiredHeadcount=currentCount+Math.max(0,shortageHeadcount);
 // 1인 1주 최대 = 52h, 주수 = max(평일/5, (평일+특근)/6)
 const weeks52=Math.max(wd>0?wd/5:0,(wd+specialDaysCount)>0?(wd+specialDaysCount)/6:0);
 const perPersonAvail52=52*weeks52;
-const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;
+const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;const _rpd=WORK_TIMES[line].regular/60;const _vacD=baseEmps.filter(e=>e.name&&!e.isLeader&&(!e.hireDate||new Date(e.hireDate)<=monthEnd)&&(!e.resignDate||new Date(e.resignDate)>=monthStart)).reduce((s,e)=>s+((e.monthlyVacations&&e.monthlyVacations[m]||[]).length),0);const _ldr=baseEmps.filter(e=>e.name&&e.isLeader&&(!e.hireDate||new Date(e.hireDate)<=monthEnd)&&(!e.resignDate||new Date(e.resignDate)>=monthStart)).length;const requiredHeadcountRec=(wd*_rpd+35)>0?Math.ceil((totalRequired+_vacD*_rpd)/(wd*_rpd+35))+_ldr:0;
 // 52시간 분석
 const weeklyData=calculateWeeklyHours(line,m,selectedYear,workDays);
 const activeWeeklyEmps=weeklyData.employees.filter(emp=>emp.avgHours>0);
@@ -4070,7 +4070,7 @@ processItemDetails[p]=procItems.map(i=>({name:i.name,qty:i.monthlyQty?.[m]||0}))
 const totalQty=Object.values(processQtys).reduce((s,v)=>s+v,0);
 results.push({
 month:MONTHS[m],mIdx:m,
-currentCount,requiredHeadcount,requiredHeadcount52,shortageHeadcount,
+currentCount,requiredHeadcount,requiredHeadcount52,requiredHeadcountRec,shortageHeadcount,
 totalRequired:Math.round(totalRequired),
 totalAssigned:Math.round(totalAssigned),
 shortage:Math.round(shortage),
@@ -4250,8 +4250,8 @@ const totalShortage=results.reduce((s,r)=>s+Math.max(0,r.shortage),0);
 const shortageMonthCount=validResults.length;
 const okMonthCount=12-shortageMonthCount;
 // 그래프 좌표 계산
-const maxCount=Math.max(...results.map(r=>Math.max(r.currentCount,r.requiredHeadcount52)))+2;
-const minCount=Math.max(0,Math.min(...results.map(r=>Math.min(r.currentCount,r.requiredHeadcount52)))-2);
+const maxCount=Math.max(...results.map(r=>Math.max(r.currentCount,r.requiredHeadcountRec)))+2;
+const minCount=Math.max(0,Math.min(...results.map(r=>Math.min(r.currentCount,r.requiredHeadcountRec)))-2);
 const range=Math.max(1,maxCount-minCount);
 const xStep=100;
 const yScale=240/range;
@@ -4282,8 +4282,8 @@ return /*#__PURE__*/React.createElement("g",{key:"grid"+i},
 );
 }).filter(Boolean),
 // 필요인원 곡선
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:results.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
-results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"req"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"reqL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)-12,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:results.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcountRec)).join(" ")}),
+results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"req"+i,cx:xAt(i),cy:yAt(r.requiredHeadcountRec),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"reqL"+i,x:xAt(i),y:yAt(r.requiredHeadcountRec)-12,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcountRec.toFixed(1))),
 // 현재인원 직선
 /*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:results.map((r,i)=>xAt(i)+","+yAt(r.currentCount)).join(" ")}),
 results.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"cur"+i,cx:xAt(i),cy:yAt(r.currentCount),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),results.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"curL"+i,x:xAt(i),y:yAt(r.currentCount)+18,fontSize:12,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.currentCount)),
@@ -4682,10 +4682,10 @@ const requiredHeadcount=currentCount+Math.max(0,shortageHeadcount);
 // 주52시간 한도 기준 정적 필요인원
 const weeks52=Math.max(wd>0?wd/5:0,(wd+specialDaysCount)>0?(wd+specialDaysCount)/6:0);
 const perPersonAvail52=52*weeks52;
-const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;
+const requiredHeadcount52=perPersonAvail52>0?totalRequired/perPersonAvail52:0;const _rpd=WORK_TIMES[line].regular/60;const _vacD=baseEmps.filter(e=>e.name&&!e.isLeader&&(!e.hireDate||new Date(e.hireDate)<=monthEnd)&&(!e.resignDate||new Date(e.resignDate)>=monthStart)).reduce((s,e)=>s+((e.monthlyVacations&&e.monthlyVacations[m]||[]).length),0);const _ldr=baseEmps.filter(e=>e.name&&e.isLeader&&(!e.hireDate||new Date(e.hireDate)<=monthEnd)&&(!e.resignDate||new Date(e.resignDate)>=monthStart)).length;const requiredHeadcountRec=(wd*_rpd+35)>0?Math.ceil((totalRequired+_vacD*_rpd)/(wd*_rpd+35))+_ldr:0;
 results.push({
 mIdx:m,month:MONTHS[m],
-currentCount,requiredHeadcount,requiredHeadcount52,shortageHeadcount,
+currentCount,requiredHeadcount,requiredHeadcount52,requiredHeadcountRec,shortageHeadcount,
 shortage:Math.round(shortage),
 totalRequired:Math.round(totalRequired),
 totalAssigned:Math.round(totalAssigned),
@@ -4738,18 +4738,18 @@ isValid&&(()=>{
 const curResults=cache.results.filter(r=>r&&r.mIdx>=annualStartMonth&&r.mIdx<=annualEndMonth);
 const savedResults=savedCache.results.filter(r=>r&&r.mIdx>=annualStartMonth&&r.mIdx<=annualEndMonth);
 // 연간 합계
-const curYearly=curResults.reduce((s,r)=>s+r.requiredHeadcount52,0)/12;
-const savedYearly=savedResults.reduce((s,r)=>s+r.requiredHeadcount52,0)/12;
+const curYearly=curResults.reduce((s,r)=>s+r.requiredHeadcountRec,0)/12;
+const savedYearly=savedResults.reduce((s,r)=>s+r.requiredHeadcountRec,0)/12;
 const yearlyDiff=curYearly-savedYearly;
 // 그래프 범위
 const maxCount=Math.max(
-...curResults.map(r=>r.requiredHeadcount52),
-...savedResults.map(r=>r.requiredHeadcount52),
+...curResults.map(r=>r.requiredHeadcountRec),
+...savedResults.map(r=>r.requiredHeadcountRec),
 ...curResults.map(r=>r.currentCount)
 )+2;
 const minCount=Math.max(0,Math.min(
-...curResults.map(r=>r.requiredHeadcount52),
-...savedResults.map(r=>r.requiredHeadcount52),
+...curResults.map(r=>r.requiredHeadcountRec),
+...savedResults.map(r=>r.requiredHeadcountRec),
 ...curResults.map(r=>r.currentCount)
 )-2);
 const range=Math.max(1,maxCount-minCount);
@@ -4791,11 +4791,11 @@ return /*#__PURE__*/React.createElement("g",{key:"srg"+i},
 );
 }).filter(Boolean),
 // 저장본 필요 (점선 파랑)
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:savedResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
-savedResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"srs"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),savedResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srsL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)-10,fontSize:11,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#3b82f6",strokeWidth:3,strokeDasharray:"6,4",points:savedResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcountRec)).join(" ")}),
+savedResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"srs"+i,cx:xAt(i),cy:yAt(r.requiredHeadcountRec),r:4,fill:"#3b82f6",stroke:"#fff",strokeWidth:2})),savedResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srsL"+i,x:xAt(i),y:yAt(r.requiredHeadcountRec)-10,fontSize:11,fill:"#3b82f6",textAnchor:"middle",fontWeight:700},r.requiredHeadcountRec.toFixed(1))),
 // 현재 필요 (실선 빨강)
-/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:curResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcount52)).join(" ")}),
-curResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"src"+i,cx:xAt(i),cy:yAt(r.requiredHeadcount52),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),curResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srcL"+i,x:xAt(i),y:yAt(r.requiredHeadcount52)+18,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcount52.toFixed(1))),
+/*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#dc2626",strokeWidth:3,points:curResults.map((r,i)=>xAt(i)+","+yAt(r.requiredHeadcountRec)).join(" ")}),
+curResults.map((r,i)=>/*#__PURE__*/React.createElement("circle",{key:"src"+i,cx:xAt(i),cy:yAt(r.requiredHeadcountRec),r:5,fill:"#dc2626",stroke:"#fff",strokeWidth:2})),curResults.map((r,i)=>/*#__PURE__*/React.createElement("text",{key:"srcL"+i,x:xAt(i),y:yAt(r.requiredHeadcountRec)+18,fontSize:12,fill:"#dc2626",textAnchor:"middle",fontWeight:700},r.requiredHeadcountRec.toFixed(1))),
 // 현재 인원 (녹색 점선)
 /*#__PURE__*/React.createElement("polyline",{fill:"none",stroke:"#10b981",strokeWidth:2,strokeDasharray:"3,3",points:curResults.map((r,i)=>xAt(i)+","+yAt(r.currentCount)).join(" ")}),
 // X축
