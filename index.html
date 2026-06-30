@@ -13,6 +13,10 @@
      · 두 시나리오 id매칭 비교: 정규/협력 인원수(월별), Labor↔Temp 전환인원, 입사/퇴사일 변경, 시급변경, 단축근무, 잔업/야간/특근 제한, 휴가 순증감, 근무일(특근) 차이
      · 사유표(기본급/물량/기타)는 그대로 HR=Σ사유+기타 reconcile 유지. 차이상세는 "왜 차이나는지" 근거로 결과 하단 + 엑셀 3번째 시트(인원차이상세)
      · 계획(앱)과 실적(HR) 기준차이는 기타로 흡수. node검증: 변동표 reconcile 유지, 엑셀 3시트 정상 -->
+<!-- v366 (2026-06-30): 사유를 표 안에 행으로 통합 (전체인원 기준, 금액기준=HR).
+     · 정규/협력 구분 무시, 전체인원(정규+협력 합) 기준. 행: 전체인원(이전/현재) → ①인원증감(Δ인원×평균기본급) → 휴가순증감(일)+②휴가차이 → ③생산수량(물량) → [수동] → 기타 → 합계(=HR차이)
+     · FTIV는 인원 없음 → ①FTIV배부차이 + ②물량 + 기타. node검증: 전 라인 reconcile (TCP +492,103/FE -25,258,411/FTIV +55,043,805)
+     · 하단 "변경 인원 상세"는 입사/퇴사/시급/단축/제한/근무일 누가-근거만(정규협력 split·Temp전환 제거). 엑셀 사유분해 시트도 동일 구조 -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -2968,24 +2972,37 @@ const anaScenQty = (scen) => {
   return out;
 };
 
-// 사유 분해: 기본급=base_var, 생산수량(물량)=수량비×(이전 otn+temp), 수동=③, 기타=총차이-Σ
-const anaDecompose = (built, qtyPrior, qtyCurr, manualReasons) => {
-  const months = built.months; const acts = ['TCP', 'FE', 'FTIV'];
+// 사유 분해 (전체인원 기준): 인원증감=Δ전체인원×평균기본급, 휴가=Δ일×일당, 생산수량=수량비×(이전 잔업+Temp), FTIV배부=base_var, 수동=③, 기타=총차이-Σ
+const _md_active = (e, m) => { const w = ((e.monthlyWages || [])[m - 1]) || 0; if (w === 0) return false; const hire = _md_parse(e.hireDate), resign = _md_parse(e.resignDate); const end = new Date(2026, m - 1, 20), start = new Date(2026, m - 2, 21); if (hire && hire > end) return false; if (resign && resign < start) return false; return true; };
+const _md_headAvg = (scen, key, m) => { const emps = (scen && scen[key]) || []; let head = 0, sumW = 0; emps.forEach(e => { if (_md_active(e, m)) { head++; sumW += ((e.monthlyWages || [])[m - 1]) || 0; } }); const avgW = head ? sumW / head : 0; return { head: head, avgBase: avgW * 209, dayRate: avgW * 8 }; };
+const anaDecompose = (built, priorScen, currScen, manualReasons) => {
+  const months = built.months; const acts = ['TCP', 'FE', 'FTIV']; const keyOf = { TCP: 'tcpEmployees', FE: 'feEmployees' };
+  const qP = anaScenQty(priorScen), qC = anaScenQty(currScen);
   const per = {};
   acts.forEach(a => {
     const qline = a === 'FTIV' ? 'FE' : a;
-    const base = {}, vol = {}, man = {}, etc = {}, total = {};
+    const total = {}, person = {}, vacation = {}, volume = {}, alloc = {}, man = {}, etc = {}, headP = {}, headC = {}, vacD = {};
     months.forEach(m => {
       const bv = built.res[a].base.var[m], ov = built.res[a].otn.var[m], tv = built.res[a].temp.var[m];
-      total[m] = bv + ov + tv; base[m] = bv;
-      const qp = (qtyPrior && qtyPrior[qline] && qtyPrior[qline][m]) || 0;
-      const qc = (qtyCurr && qtyCurr[qline] && qtyCurr[qline][m]) || 0;
+      total[m] = bv + ov + tv;
+      const qp = (qP[qline] && qP[qline][m]) || 0, qc = (qC[qline] && qC[qline][m]) || 0;
       const volBase = built.res[a].otn.prior[m] + built.res[a].temp.prior[m];
-      vol[m] = (qp > 0) ? -((qc - qp) / qp) * volBase : 0;
+      volume[m] = (qp > 0) ? -((qc - qp) / qp) * volBase : 0;
       man[m] = (manualReasons || []).filter(r => r.line === a && (+r.month) === m).reduce((s, r) => s + (+r.amount || 0), 0);
-      etc[m] = total[m] - base[m] - vol[m] - man[m];
+      if (a === 'FTIV') { alloc[m] = bv; person[m] = 0; vacation[m] = 0; headP[m] = null; headC[m] = null; vacD[m] = 0; etc[m] = total[m] - alloc[m] - volume[m] - man[m]; }
+      else {
+        const hp = _md_headAvg(priorScen, keyOf[a], m), hc = _md_headAvg(currScen, keyOf[a], m);
+        headP[m] = hp.head; headC[m] = hc.head;
+        const avgBase = hc.avgBase || hp.avgBase, dayRate = hc.dayRate || hp.dayRate;
+        person[m] = -(hc.head - hp.head) * avgBase;
+        let dv = 0; const Pe = {}, Ce = {}; ((priorScen && priorScen[keyOf[a]]) || []).forEach(e => { Pe[e.id] = e; }); ((currScen && currScen[keyOf[a]]) || []).forEach(e => { Ce[e.id] = e; });
+        const allIds = {}; Object.keys(Pe).forEach(k => allIds[k] = 1); Object.keys(Ce).forEach(k => allIds[k] = 1);
+        Object.keys(allIds).forEach(id => { const av = _md_vcount(Pe[id] || {}), bv2 = _md_vcount(Ce[id] || {}); dv += (bv2[m - 1] || 0) - (av[m - 1] || 0); });
+        vacD[m] = dv; vacation[m] = -dv * dayRate;
+        etc[m] = total[m] - person[m] - vacation[m] - volume[m] - man[m];
+      }
     });
-    per[a] = { base, vol, man, etc, total };
+    per[a] = { total: total, person: person, vacation: vacation, volume: volume, alloc: alloc, man: man, etc: etc, headP: headP, headC: headC, vacD: vacD };
   });
   return { acts, months, per, manualReasons: manualReasons || [] };
 };
@@ -3003,16 +3020,18 @@ const anaExportExcel = (built, decomp, diff) => {
   };
   let s1 = []; ['이전(Prior)','현재(Current)','차이(이전-현재)'].forEach((p, i) => { s1 = s1.concat(sec(p, ['prior', 'curr', 'var'][i])); });
   const ws1 = XLSX.utils.aoa_to_sheet(s1);
-  // 시트2 사유
-  let s2 = [['당월급여분석 사유분해 (차이=이전-현재, 절감+)'], hdr];
+  // 시트2 사유 (전체인원 기준)
+  let s2 = [['당월급여분석 사유분해 (차이=이전-현재, 절감+, 전체인원 기준)'], hdr];
   acts.forEach(a => {
     const p = decomp.per[a];
     const manNames = {}; decomp.manualReasons.filter(r => r.line === a).forEach(r => { manNames[r.item || '(수동)'] = true; });
-    s2.push([a, '기본급(인원·단가)'].concat(months.map(m => Math.round(p.base[m]))).concat([Math.round(sumO(p.base))]));
-    s2.push([a, '생산수량(물량)'].concat(months.map(m => Math.round(p.vol[m]))).concat([Math.round(sumO(p.vol))]));
-    Object.keys(manNames).forEach(nm => { const rowm = {}; months.forEach(m => rowm[m] = decomp.manualReasons.filter(r => r.line === a && (r.item || '(수동)') === nm && (+r.month) === m).reduce((s, r) => s + (+r.amount || 0), 0)); s2.push([a, '[수동] ' + nm].concat(months.map(m => Math.round(rowm[m]))).concat([Math.round(sumO(rowm))])); });
-    s2.push([a, '기타(효율·잔차)'].concat(months.map(m => Math.round(p.etc[m]))).concat([Math.round(sumO(p.etc))]));
-    s2.push([a + ' 합계', ''].concat(months.map(m => Math.round(p.total[m]))).concat([Math.round(sumO(p.total))]));
+    const push = (lbl, o, isCount) => s2.push([a, lbl].concat(months.map(m => (o[m] == null ? '' : Math.round(o[m])))).concat([isCount ? '' : Math.round(sumO(o))]));
+    if (a !== 'FTIV') {
+      push('전체인원(이전)', p.headP, true); push('전체인원(현재)', p.headC, true);
+      push('① 인원증감', p.person); push('  휴가순증감(일)', p.vacD, true); push('② 휴가차이', p.vacation); push('③ 생산수량(물량)', p.volume);
+    } else { push('① FTIV 배부차이', p.alloc); push('② 생산수량(물량)', p.volume); }
+    Object.keys(manNames).forEach(nm => { const rowm = {}; months.forEach(m => rowm[m] = decomp.manualReasons.filter(r => r.line === a && (r.item || '(수동)') === nm && (+r.month) === m).reduce((s, r) => s + (+r.amount || 0), 0)); push('[수동] ' + nm, rowm); });
+    push('기타(실적·기타사유)', p.etc); push(a + ' 합계(=HR차이)', p.total);
     s2.push([]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(s2);
@@ -3142,7 +3161,7 @@ const AnalysisTab = ({
       const built = anaBuildTable(hrP, hrC, fin);
       const sP = (savedData || []).find(d => d.name === anaPrev);
       const sC = (savedData || []).find(d => d.name === anaCurr);
-      const decomp = anaDecompose(built, anaScenQty(sP), anaScenQty(sC), anaReasons || []);
+      const decomp = anaDecompose(built, sP, sC, anaReasons || []);
       const diff = (sP && sC) ? anaDiffScenarios(sP, sC) : null;
       setAnaResult({ built, decomp, diff, hasScen: !!(sP && sC) });
     } catch (e) { setAnaResult({ error: (e && e.message ? e.message : String(e)) }); }
@@ -3175,22 +3194,38 @@ const AnalysisTab = ({
 
   const renderReasonTable = (decomp) => {
     const months = decomp.months;
-    const headers = ["라인", "사유"].concat(months.map(m => m + "월")).concat(["Total"]);
+    const headers = ["라인", "사유 / 근거"].concat(months.map(m => m + "월")).concat(["Total"]);
     const sumO = o => months.reduce((s, m) => s + (o[m] || 0), 0);
+    const manRow = (a, nm) => { const o = {}; months.forEach(m => o[m] = decomp.manualReasons.filter(r => r.line === a && (r.item || "(수동)") === nm && (+r.month) === m).reduce((s, r) => s + (+r.amount || 0), 0)); return o; };
     const rows = [];
     decomp.acts.forEach(a => {
       const p = decomp.per[a];
       const manNames = []; decomp.manualReasons.filter(r => r.line === a).forEach(r => { const nm = r.item || "(수동)"; if (manNames.indexOf(nm) < 0) manNames.push(nm); });
-      const lineRows = [["기본급(인원·단가)", p.base], ["생산수량(물량)", p.vol]]
-        .concat(manNames.map(nm => ["[수동] " + nm, (() => { const o = {}; months.forEach(m => o[m] = decomp.manualReasons.filter(r => r.line === a && (r.item || "(수동)") === nm && (+r.month) === m).reduce((s, r) => s + (+r.amount || 0), 0)); return o; })()]))
-        .concat([["기타(효율·잔차)", p.etc]]);
-      lineRows.forEach(([lbl, o], ri) => rows.push(React.createElement("tr", { key: a + ri, className: ri === 0 ? "border-t border-slate-300" : "" },
-        ri === 0 ? React.createElement("td", { className: "px-1.5 py-1 font-bold text-slate-800 align-top", rowSpan: lineRows.length + 1 }, a) : null,
-        React.createElement("td", { className: "px-1.5 py-1 text-slate-600" }, lbl),
-        months.map(m => numCell(o[m], false)), numCell(sumO(o), true))));
-      rows.push(React.createElement("tr", { key: a + "_t", className: "bg-amber-50" },
-        React.createElement("td", { className: "px-1.5 py-1 font-bold text-amber-900" }, a + " 합계"),
-        months.map(m => numCell(p.total[m], true)), numCell(sumO(p.total), true)));
+      let specs = [];
+      if (a !== "FTIV") {
+        specs.push({ label: "전체인원 (이전)", o: p.headP, kind: "count" });
+        specs.push({ label: "전체인원 (현재)", o: p.headC, kind: "count", cls: "text-blue-700 font-semibold" });
+        specs.push({ label: "① 인원증감", o: p.person, kind: "amt" });
+        specs.push({ label: "  └ 휴가 순증감(일)", o: p.vacD, kind: "count", cls: "text-amber-700" });
+        specs.push({ label: "② 휴가차이", o: p.vacation, kind: "amt" });
+        specs.push({ label: "③ 생산수량(물량)", o: p.volume, kind: "amt" });
+      } else {
+        specs.push({ label: "① FTIV 배부차이", o: p.alloc, kind: "amt" });
+        specs.push({ label: "② 생산수량(물량)", o: p.volume, kind: "amt" });
+      }
+      manNames.forEach(nm => specs.push({ label: "[수동] " + nm, o: manRow(a, nm), kind: "amt" }));
+      specs.push({ label: "기타(실적·기타사유)", o: p.etc, kind: "amt" });
+      specs.push({ label: a + " 합계 (=HR차이)", o: p.total, kind: "sum" });
+      specs.forEach((sp, ri) => {
+        const cells = months.map(m => sp.kind === "count"
+          ? React.createElement("td", { key: m, className: "px-1.5 py-0.5 text-right tabular-nums " + (sp.cls || "text-slate-500") }, (sp.o[m] == null ? "" : sp.o[m]))
+          : numCell(sp.o[m], sp.kind === "sum"));
+        const totCell = sp.kind === "count" ? React.createElement("td", { className: "px-1.5 py-0.5" }, "") : numCell(sumO(sp.o), true);
+        rows.push(React.createElement("tr", { key: a + ri, className: (ri === 0 ? "border-t-2 border-slate-300 " : "") + (sp.kind === "sum" ? "bg-amber-100 font-bold" : "") },
+          ri === 0 ? React.createElement("td", { className: "px-1.5 py-1 font-bold text-slate-800 align-top", rowSpan: specs.length }, a) : null,
+          React.createElement("td", { className: "px-1.5 py-0.5 " + (sp.cls || "text-slate-600") }, sp.label),
+          cells, totCell));
+      });
     });
     return React.createElement("div", { className: "overflow-x-auto" }, React.createElement("table", { className: "text-xs border-collapse w-full" },
       React.createElement("thead", {}, React.createElement("tr", { className: "bg-amber-100 text-amber-900" }, headers.map((h, i) => React.createElement("th", { key: i, className: "px-1.5 py-1.5 border border-amber-200 " + (i < 2 ? "text-left" : "text-right") }, h)))),
@@ -3207,14 +3242,7 @@ const AnalysisTab = ({
         React.createElement("td", { className: "px-1.5 py-0.5 text-slate-600 " + (cls || "") }, lbl),
         ms.map(m => React.createElement("td", { key: m, className: "px-1.5 py-0.5 text-right tabular-nums " + (cls || "") }, o[m])));
       return React.createElement("div", { key: L, className: "border border-slate-200 rounded-lg p-3 bg-slate-50" },
-        React.createElement("div", { className: "text-sm font-bold text-slate-800 mb-1" }, L + " — 인원/입력 차이"),
-        React.createElement("div", { className: "overflow-x-auto" }, React.createElement("table", { className: "text-xs border-collapse" },
-          React.createElement("thead", {}, React.createElement("tr", { className: "text-slate-500" }, React.createElement("th", { className: "px-1.5 py-0.5 text-left" }, "구분"), ms.map(m => React.createElement("th", { key: m, className: "px-1.5 py-0.5 text-right" }, m + "월")))),
-          React.createElement("tbody", {},
-            cntRow("정규 이전", dd.reg.prior), cntRow("정규 현재", dd.reg.curr, "font-semibold text-blue-700"),
-            cntRow("협력 이전", dd.temp.prior), cntRow("협력 현재", dd.temp.curr, "font-semibold text-blue-700"),
-            cntRow("휴가 순증감", dd.vacNet, "text-amber-700")))),
-        mkList("Labor↔Temp 전환", dd.tempSwitch.map(x => x.name + ": " + x.changes.map(c => c.m + "월 " + c.from + "→" + c.to).join(", "))),
+        React.createElement("div", { className: "text-sm font-bold text-slate-800 mb-1" }, L + " — 변경 인원 (누가 바뀌었나)"),
         mkList("입사일 변경", dd.hireChg.map(x => x.name + ": " + x.from + " → " + x.to)),
         mkList("퇴사일 변경", dd.resignChg.map(x => x.name + ": " + x.from + " → " + x.to)),
         mkList("시급 변경", dd.wageChg.map(x => x.name + ": " + x.changes.map(c => c.m + "월 " + c.from + "→" + c.to).join(", "))),
@@ -3244,7 +3272,7 @@ const AnalysisTab = ({
         renderReasonTable(decomp),
         React.createElement("div", { className: "text-xs text-slate-400 mt-1" }, "기본급=인원·단가차이 / 생산수량=수량비×(이전 잔업+Temp) / 수동=③입력 / 기타=총차이−Σ사유(자동reconcile). 합계=변동표 요약과 동일.")),
       anaResult.diff ? React.createElement("div", {},
-        React.createElement("div", { className: "text-sm font-bold text-blue-800 mb-1" }, "③ 인원/입력 차이 상세 (금액기준=HR, 왜 차이나는지 근거)"),
+        React.createElement("div", { className: "text-sm font-bold text-blue-800 mb-1" }, "③ 변경 인원 상세 (누가 — 근거, 금액기준=HR)"),
         renderDiffPanel(anaResult.diff)) : null,
       React.createElement("div", { className: "text-xs text-slate-400" }, "금액=HR기준, FTIV분리·5월보정=재경 기준. 물량/효율 추정은 시드값이며 ③ 수동사유로 조정해 기타를 줄이세요.")
     );
