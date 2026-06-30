@@ -9,6 +9,10 @@
      · node검증: 사유합계 = 변동표요약 정확일치 (TCP +492,103 / FE -25,258,411 / FTIV +55,043,805), 월별 reconcile OK
      · 엑셀 다운로드: 시트1=이전/현재/차이(Activity×Class×월), 시트2=사유분해(Activity×사유×월) — 당월급여분석_FV비교.xlsx
      · 5월 Current는 재경 fallback 유지. 물량/효율 추정은 시드 → ③ 수동사유로 조정해 기타 축소 -->
+<!-- v365 (2026-06-30): 인원/입력 차이 상세 추가 (금액기준=HR 고정, 근거표).
+     · 두 시나리오 id매칭 비교: 정규/협력 인원수(월별), Labor↔Temp 전환인원, 입사/퇴사일 변경, 시급변경, 단축근무, 잔업/야간/특근 제한, 휴가 순증감, 근무일(특근) 차이
+     · 사유표(기본급/물량/기타)는 그대로 HR=Σ사유+기타 reconcile 유지. 차이상세는 "왜 차이나는지" 근거로 결과 하단 + 엑셀 3번째 시트(인원차이상세)
+     · 계획(앱)과 실적(HR) 기준차이는 기타로 흡수. node검증: 변동표 reconcile 유지, 엑셀 3시트 정상 -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -2987,7 +2991,7 @@ const anaDecompose = (built, qtyPrior, qtyCurr, manualReasons) => {
 };
 
 // 엑셀 export: 시트1=이전/현재/차이(Activity×Class×월), 시트2=사유분해
-const anaExportExcel = (built, decomp) => {
+const anaExportExcel = (built, decomp, diff) => {
   const months = built.months; const acts = ['TCP', 'FE', 'FTIV']; const cls = [['base', '기본급'], ['otn', '잔업·야간'], ['temp', 'Temp-Help']];
   const hdr = ['구분', 'Class'].concat(months.map(m => m + '월')).concat(['Total']);
   const sumO = o => months.reduce((s, m) => s + (o[m] || 0), 0);
@@ -3013,7 +3017,93 @@ const anaExportExcel = (built, decomp) => {
   });
   const ws2 = XLSX.utils.aoa_to_sheet(s2);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, '이전현재차이'); XLSX.utils.book_append_sheet(wb, ws2, '사유분해');
+  // 시트3 인원차이상세
+  if (diff) {
+    let s3 = [['인원/입력 차이 상세 (금액기준=HR, 근거표)']];
+    ['TCP', 'FE'].forEach(L => {
+      const dd = diff[L]; if (!dd) return; const ms = dd.months;
+      s3.push([]); s3.push([L + ' 인원수', ''].concat(ms.map(m => m + '월')));
+      s3.push(['', '정규 이전'].concat(ms.map(m => dd.reg.prior[m]))); s3.push(['', '정규 현재'].concat(ms.map(m => dd.reg.curr[m])));
+      s3.push(['', '협력 이전'].concat(ms.map(m => dd.temp.prior[m]))); s3.push(['', '협력 현재'].concat(ms.map(m => dd.temp.curr[m])));
+      s3.push(['', '휴가 순증감'].concat(ms.map(m => dd.vacNet[m])));
+      if (dd.tempSwitch.length) { s3.push(['Labor↔Temp 전환', '']); dd.tempSwitch.forEach(x => s3.push(['', x.name, x.changes.map(c => c.m + '월 ' + c.from + '→' + c.to).join(', ')])); }
+      if (dd.hireChg.length) { s3.push(['입사일 변경', '']); dd.hireChg.forEach(x => s3.push(['', x.name, x.from + ' → ' + x.to])); }
+      if (dd.resignChg.length) { s3.push(['퇴사일 변경', '']); dd.resignChg.forEach(x => s3.push(['', x.name, x.from + ' → ' + x.to])); }
+      if (dd.wageChg.length) { s3.push(['시급 변경', '']); dd.wageChg.forEach(x => s3.push(['', x.name, x.changes.map(c => c.m + '월 ' + c.from + '→' + c.to).join(', ')])); }
+      if (dd.shortChg.length) { s3.push(['단축근무', '']); dd.shortChg.forEach(x => s3.push(['', x.name, x.changes.map(c => c.m + '월').join(', ')])); }
+      if (dd.otChg.length) { s3.push(['잔업/야간/특근 제한', '']); dd.otChg.forEach(x => s3.push(['', x.name + ' ' + x.kind, x.changes.map(c => c.m + '월').join(', ')])); }
+      const cal = Object.keys(dd.calDiff); if (cal.length) { s3.push(['근무일(특근) 차이', '']); cal.forEach(m => { const v = dd.calDiff[m]; s3.push(['', m + '월', '근무 ' + v.p.work + '→' + v.c.work + ', 특근 ' + v.p.special + '→' + v.c.special + ', 휴무 ' + v.p.off + '→' + v.c.off]); }); }
+    });
+    const ws3 = XLSX.utils.aoa_to_sheet(s3); XLSX.utils.book_append_sheet(wb, ws3, '인원차이상세');
+  }
   XLSX.writeFile(wb, '당월급여분석_FV비교.xlsx');
+};
+
+const _md_parse = (ds) => { if (!ds) return null; const p = ds.split('-').map(Number); if (p.length < 3 || !p[0]) return null; return new Date(p[0], p[1] - 1, p[2]); };
+const _md_vcount = (e) => { const mv = e.monthlyVacations || []; const o = []; for (let m = 0; m < 12; m++) { const x = mv[m]; o.push(Array.isArray(x) ? x.length : 0); } return o; };
+const _md_bool = (arr, m) => !!(arr && arr[m]);
+const anaDiffScenarios = (priorScen, currScen) => {
+  const lines = [['TCP', 'tcpEmployees'], ['FE', 'feEmployees']];
+  const months = [5, 6, 7, 8, 9, 10, 11, 12];
+  const out = {};
+  lines.forEach(([L, key]) => {
+    const Pe = {}, Ce = {};
+    (priorScen && priorScen[key] || []).forEach(e => Pe[e.id] = e);
+    (currScen && currScen[key] || []).forEach(e => Ce[e.id] = e);
+    const ids = Array.from(new Set(Object.keys(Pe).concat(Object.keys(Ce))));
+    // 월별 인원수 (정규/협력): wage>0 & !isTemp = 정규, isTemp = 협력
+    const reg = { prior: {}, curr: {} }, temp = { prior: {}, curr: {} };
+    months.forEach(m => { reg.prior[m] = 0; reg.curr[m] = 0; temp.prior[m] = 0; temp.curr[m] = 0; });
+    const countInto = (emps, regO, tempO) => Object.values(emps).forEach(e => {
+      const wages = e.monthlyWages || []; const it = e.monthlyIsTemp || [];
+      months.forEach(m => { const w = wages[m - 1] || 0; const hire = _md_parse(e.hireDate); const resign = _md_parse(e.resignDate);
+        // 해당월 급여기간 종료=당월20일, 시작=전월21일
+        const end = new Date(2026, m - 1, 20), start = new Date(2026, m - 2, 21);
+        const active = w > 0 && !(hire && hire > end) && !(resign && resign < start);
+        if (!active) return; if (_md_bool(it, m - 1)) tempO[m]++; else regO[m]++; });
+    });
+    countInto(Pe, reg.prior, temp.prior); countInto(Ce, reg.curr, temp.curr);
+    // 상세 변화 항목들
+    const tempSwitch = [], hireChg = [], resignChg = [], wageChg = [], shortChg = [], otChg = [], vacChg = [];
+    ids.forEach(id => {
+      const ep = Pe[id], ec = Ce[id]; const nm = (ec && ec.name) || (ep && ep.name) || id;
+      if (!ep && ec) { /* 현재만 존재 */ }
+      if (ep && !ec) { /* 이전만 존재 */ }
+      const a = ep || {}, b = ec || {};
+      // Labor↔Temp 전환 (월)
+      const ai = a.monthlyIsTemp || [], bi = b.monthlyIsTemp || [];
+      const sw = months.filter(m => _md_bool(ai, m - 1) !== _md_bool(bi, m - 1)).map(m => ({ m, from: _md_bool(ai, m - 1) ? '협력' : '정규', to: _md_bool(bi, m - 1) ? '협력' : '정규' }));
+      if (sw.length) tempSwitch.push({ name: nm, changes: sw });
+      // 입사/퇴사
+      if ((a.hireDate || '') !== (b.hireDate || '')) hireChg.push({ name: nm, from: a.hireDate || '(없음)', to: b.hireDate || '(없음)' });
+      if ((a.resignDate || '') !== (b.resignDate || '')) resignChg.push({ name: nm, from: a.resignDate || '(없음)', to: b.resignDate || '(없음)' });
+      // 시급(월별)
+      const aw = a.monthlyWages || [], bw = b.monthlyWages || [];
+      const wc = months.filter(m => (aw[m - 1] || 0) !== (bw[m - 1] || 0)).map(m => ({ m, from: aw[m - 1] || 0, to: bw[m - 1] || 0 }));
+      if (wc.length) wageChg.push({ name: nm, changes: wc });
+      // 단축
+      const as = a.monthlyShortWork || [], bs = b.monthlyShortWork || [];
+      const sc = months.filter(m => _md_bool(as, m - 1) !== _md_bool(bs, m - 1)).map(m => ({ m, to: _md_bool(bs, m - 1) }));
+      if (sc.length) shortChg.push({ name: nm, changes: sc });
+      // 잔업/야간/특근 제한
+      ['monthlyNoOvertime', 'monthlyNoNight', 'monthlyNoSpecial'].forEach((fld, fi) => {
+        const an = a[fld] || [], bn = b[fld] || [];
+        const cc = months.filter(m => _md_bool(an, m - 1) !== _md_bool(bn, m - 1)).map(m => ({ m, to: _md_bool(bn, m - 1) }));
+        if (cc.length) otChg.push({ name: nm, kind: ['잔업제한', '야간제한', '특근제한'][fi], changes: cc });
+      });
+      // 휴가
+      const av = _md_vcount(a), bv = _md_vcount(b);
+      const vc = months.filter(m => av[m - 1] !== bv[m - 1]).map(m => ({ m, from: av[m - 1], to: bv[m - 1] }));
+      if (vc.length) vacChg.push({ name: nm, changes: vc });
+    });
+    // 휴가 월별 순증감
+    const vacNet = {}; months.forEach(m => { let s = 0; ids.forEach(id => { const av = _md_vcount(Pe[id] || {}), bv = _md_vcount(Ce[id] || {}); s += (bv[m - 1] || 0) - (av[m - 1] || 0); }); vacNet[m] = s; });
+    // 근무일 달력
+    const dayc = (wd, m) => { const arr = (wd && wd[String(m - 1)]) || []; return { work: arr.filter(x => x.status === 'work').length, special: arr.filter(x => x.status === 'special').length, off: arr.filter(x => x.status === 'off').length }; };
+    const calDiff = {}; months.forEach(m => { const p = dayc(priorScen && priorScen.workDays, m), c = dayc(currScen && currScen.workDays, m); if (p.work !== c.work || p.special !== c.special || p.off !== c.off) calDiff[m] = { p, c }; });
+    out[L] = { months, reg, temp, tempSwitch, hireChg, resignChg, wageChg, shortChg, otChg, vacChg, vacNet, calDiff };
+  });
+  return out;
 };
 
 const AnalysisTab = ({
@@ -3053,7 +3143,8 @@ const AnalysisTab = ({
       const sP = (savedData || []).find(d => d.name === anaPrev);
       const sC = (savedData || []).find(d => d.name === anaCurr);
       const decomp = anaDecompose(built, anaScenQty(sP), anaScenQty(sC), anaReasons || []);
-      setAnaResult({ built, decomp, hasScen: !!(sP && sC) });
+      const diff = (sP && sC) ? anaDiffScenarios(sP, sC) : null;
+      setAnaResult({ built, decomp, diff, hasScen: !!(sP && sC) });
     } catch (e) { setAnaResult({ error: (e && e.message ? e.message : String(e)) }); }
   };
 
@@ -3106,6 +3197,34 @@ const AnalysisTab = ({
       React.createElement("tbody", {}, rows)));
   };
 
+  const renderDiffPanel = (diff) => {
+    const mkList = (title, items) => items.length ? React.createElement("div", { className: "mt-1" },
+      React.createElement("span", { className: "text-xs font-bold text-slate-600" }, title + " (" + items.length + ")"),
+      React.createElement("div", { className: "text-xs text-slate-500 pl-2" }, items.map((t, i) => React.createElement("div", { key: i }, "· " + t)))) : null;
+    return React.createElement("div", { className: "space-y-4" }, ["TCP", "FE"].map(L => {
+      const dd = diff[L]; if (!dd) return null; const ms = dd.months;
+      const cntRow = (lbl, o, cls) => React.createElement("tr", {},
+        React.createElement("td", { className: "px-1.5 py-0.5 text-slate-600 " + (cls || "") }, lbl),
+        ms.map(m => React.createElement("td", { key: m, className: "px-1.5 py-0.5 text-right tabular-nums " + (cls || "") }, o[m])));
+      return React.createElement("div", { key: L, className: "border border-slate-200 rounded-lg p-3 bg-slate-50" },
+        React.createElement("div", { className: "text-sm font-bold text-slate-800 mb-1" }, L + " — 인원/입력 차이"),
+        React.createElement("div", { className: "overflow-x-auto" }, React.createElement("table", { className: "text-xs border-collapse" },
+          React.createElement("thead", {}, React.createElement("tr", { className: "text-slate-500" }, React.createElement("th", { className: "px-1.5 py-0.5 text-left" }, "구분"), ms.map(m => React.createElement("th", { key: m, className: "px-1.5 py-0.5 text-right" }, m + "월")))),
+          React.createElement("tbody", {},
+            cntRow("정규 이전", dd.reg.prior), cntRow("정규 현재", dd.reg.curr, "font-semibold text-blue-700"),
+            cntRow("협력 이전", dd.temp.prior), cntRow("협력 현재", dd.temp.curr, "font-semibold text-blue-700"),
+            cntRow("휴가 순증감", dd.vacNet, "text-amber-700")))),
+        mkList("Labor↔Temp 전환", dd.tempSwitch.map(x => x.name + ": " + x.changes.map(c => c.m + "월 " + c.from + "→" + c.to).join(", "))),
+        mkList("입사일 변경", dd.hireChg.map(x => x.name + ": " + x.from + " → " + x.to)),
+        mkList("퇴사일 변경", dd.resignChg.map(x => x.name + ": " + x.from + " → " + x.to)),
+        mkList("시급 변경", dd.wageChg.map(x => x.name + ": " + x.changes.map(c => c.m + "월 " + c.from + "→" + c.to).join(", "))),
+        mkList("단축근무", dd.shortChg.map(x => x.name + ": " + x.changes.map(c => c.m + "월").join(", "))),
+        mkList("잔업/야간/특근 제한", dd.otChg.map(x => x.name + " " + x.kind + ": " + x.changes.map(c => c.m + "월").join(", "))),
+        mkList("근무일(특근) 차이", Object.keys(dd.calDiff).map(m => { const v = dd.calDiff[m]; return m + "월: 근무 " + v.p.work + "→" + v.c.work + ", 특근 " + v.p.special + "→" + v.c.special + ", 휴무 " + v.p.off + "→" + v.c.off; }))
+      );
+    }));
+  };
+
   const renderResult = () => {
     if (!anaResult) return React.createElement("div", { className: "text-xs text-slate-500" }, "HR FV이전·FV현재 + 재경 Variance 업로드 후 [분석 실행]. (①시나리오 선택 시 생산수량 사유 자동계산)");
     if (anaResult.error) return React.createElement("div", { className: "text-sm text-red-600 font-semibold" }, "⚠ " + anaResult.error);
@@ -3117,13 +3236,16 @@ const AnalysisTab = ({
       built.swapped ? React.createElement("div", { className: "text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-3 py-2" }, "ℹ️ 두 HR 파일의 이전/현재가 데이터 기준 자동교정됨 (파일명 FV05/FV06과 실제 roll 반대).") : null,
       React.createElement("div", { className: "flex gap-2 flex-wrap items-center" },
         React.createElement("span", { className: "text-xs text-slate-500" }, "검증:"), okBadge("TCP"), okBadge("FE"), okBadge("FTIV"),
-        React.createElement("button", { onClick: () => { try { anaExportExcel(built, decomp); } catch (e) { alert("엑셀 생성 오류: " + (e && e.message ? e.message : e)); } }, className: "ml-auto px-3 py-1.5 rounded bg-emerald-600 text-white text-xs font-bold" }, "📥 엑셀 다운로드")),
+        React.createElement("button", { onClick: () => { try { anaExportExcel(built, decomp, anaResult.diff); } catch (e) { alert("엑셀 생성 오류: " + (e && e.message ? e.message : e)); } }, className: "ml-auto px-3 py-1.5 rounded bg-emerald-600 text-white text-xs font-bold" }, "📥 엑셀 다운로드")),
       React.createElement("div", {},
         React.createElement("div", { className: "text-sm font-bold text-violet-800 mb-1" }, "① 변동표 — Activity×Class×월 (차이=이전−현재)"), renderVarTable(built)),
       React.createElement("div", {},
         React.createElement("div", { className: "text-sm font-bold text-amber-800 mb-1" }, "② 사유분해 — " + (anaResult.hasScen ? "물량 자동계산됨" : "①시나리오 미선택 → 물량=0, 전액 기타")),
         renderReasonTable(decomp),
         React.createElement("div", { className: "text-xs text-slate-400 mt-1" }, "기본급=인원·단가차이 / 생산수량=수량비×(이전 잔업+Temp) / 수동=③입력 / 기타=총차이−Σ사유(자동reconcile). 합계=변동표 요약과 동일.")),
+      anaResult.diff ? React.createElement("div", {},
+        React.createElement("div", { className: "text-sm font-bold text-blue-800 mb-1" }, "③ 인원/입력 차이 상세 (금액기준=HR, 왜 차이나는지 근거)"),
+        renderDiffPanel(anaResult.diff)) : null,
       React.createElement("div", { className: "text-xs text-slate-400" }, "금액=HR기준, FTIV분리·5월보정=재경 기준. 물량/효율 추정은 시드값이며 ③ 수동사유로 조정해 기타를 줄이세요.")
     );
   };
