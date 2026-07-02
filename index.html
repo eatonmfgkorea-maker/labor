@@ -1,3 +1,10 @@
+<!-- v367 (2026-07-02): 휴가 자동배치 여유(diff) 계산 버그 수정.
+     · autoDistributeVacation > calculatePureDiffLocal: ctGroup 조회를 이름(g.name===item.ctGroup) → ID(g.id===item.ctGroup)로 수정,
+       CT값을 ctGroup.ct(=null) → calculateCT(ctGroup,mIdx)로 수정 (앱 나머지 로직과 일치).
+     · 기존 버그: item.ctGroup은 ID인데 이름으로 매칭 실패 + ct=null → requiredHours가 사실상 0(공구시간만) → 여유가 근무일수로만 결정, 생산부하·잔업 무시.
+     · 수정 후: 여유=가용man-hour−실제필요man-hour → 바쁜달(예 8월 -127h)은 여유 없음으로 판정, 여유달(7월 +451h, 12월 +313h)에 휴가 우선 배분.
+     · 재실행 필요: 수정은 '휴가 자동분배' 버튼을 다시 눌러야 반영됨. STEP1(모든 달 1일씩 기본배분)은 유지.
+-->
 <!-- v363 (2026-06-30): 당월급여분석(FV비교) 2단계=엔진 탑재.
      · HR Labor/Temp 파싱: 기본급=Labor기본급(K) / 잔업·야간=연장근로(Q)+교대근무수당(O)+교대식대(P) / Temp-Help=Temp총액(R)
      · FTIV는 FE에서 차감(원본FE=Variance_FE+FTIV), FTIV·5월보정=재경 FV06시트 기준
@@ -6155,8 +6162,8 @@ const calculatePureDiffLocal=(lineName,mIdx)=>{
   let requiredSeconds=0;
   lineItems.forEach(item=>{
     const qty=item.monthlyQty[mIdx]||0;
-    const ctGroup=ctGroups.find(g=>g.name===item.ctGroup&&g.line===lineName);
-    const ctValue=ctGroup?.monthlyCT?.[mIdx]||ctGroup?.ct||0;
+    const ctGroup=ctGroups.find(g=>g.id===item.ctGroup);
+    const ctValue=ctGroup?calculateCT(ctGroup,mIdx):0;
     requiredSeconds+=qty*ctValue;
     if(item.changeQty>0&&item.changeCT>0){
       requiredSeconds+=Math.floor(qty/item.changeQty)*item.changeCT*60;
